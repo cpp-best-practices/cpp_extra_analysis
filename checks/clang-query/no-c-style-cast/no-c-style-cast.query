@@ -1,0 +1,4 @@
+# Flags C-style casts; use static_cast, const_cast, reinterpret_cast or
+# std::bit_cast instead. Casts to void are allowed for discarding values.
+set traversal IgnoreUnlessSpelledInSource
+match cStyleCastExpr(isExpansionInMainFile(), unless(hasDestinationType(voidType())))
