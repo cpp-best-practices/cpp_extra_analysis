@@ -21,3 +21,25 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  project-validator:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/checkout@v4
+        with:
+          repository: cpp-best-practices/project_validator
+          ref: main
+          path: project_validator
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install validator dependencies
+        run: python -m pip install "PyYAML>=6.0"
+
+      - name: Validate project
+        working-directory: project_validator
+        run: python -m project_validator --build --exclude project_validator ${{ github.workspace }}
