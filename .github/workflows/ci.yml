@@ -1,0 +1,23 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install analysis tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends clang-tools cppcheck
+
+      - name: Configure
+        run: cmake -S . -B build -DCPP_EXTRA_ANALYSIS_REQUIRE_TOOLS=ON
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
