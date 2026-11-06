@@ -22,8 +22,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
-from typing import Callable, Iterable, Sequence
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CHECKS_DIR = REPO_ROOT / "checks"
@@ -35,9 +35,7 @@ EXIT_SUCCESS = 0
 EXIT_FAILURE = 1
 EXIT_SKIPPED = 77
 
-CLANG_QUERY_BINDING = re.compile(
-    r'^(?P<file>.+?):(?P<line>\d+):(?P<column>\d+): note: "root" binds here$'
-)
+CLANG_QUERY_BINDING = re.compile(r'^(?P<file>.+?):(?P<line>\d+):(?P<column>\d+): note: "root" binds here$')
 CPPCHECK_FINDING = re.compile(
     r"^(?P<file>.+?):(?P<line>\d+):(?P<column>\d+): (?P<severity>\w+): (?P<message>.*) \[(?P<id>[^\]]+)\]$"
 )
@@ -75,11 +73,7 @@ class Outcome:
 
 
 def expected_finding_lines(source_text: str) -> frozenset[int]:
-    return frozenset(
-        number
-        for number, line in enumerate(source_text.splitlines(), start=1)
-        if EXPECT_MARKER in line
-    )
+    return frozenset(number for number, line in enumerate(source_text.splitlines(), start=1) if EXPECT_MARKER in line)
 
 
 def is_same_file(reported: str, source: Path) -> bool:
@@ -91,9 +85,7 @@ def is_same_file(reported: str, source: Path) -> bool:
 
 def parse_clang_query_output(output: str, source: Path) -> frozenset[int]:
     matches = (CLANG_QUERY_BINDING.match(line) for line in output.splitlines())
-    return frozenset(
-        int(match["line"]) for match in matches if match and is_same_file(match["file"], source)
-    )
+    return frozenset(int(match["line"]) for match in matches if match and is_same_file(match["file"], source))
 
 
 def parse_cppcheck_output(output: str, source: Path, check_name: str) -> frozenset[int]:
@@ -129,9 +121,7 @@ def run_tool(command: Sequence[str]) -> subprocess.CompletedProcess[str]:
 
 def run_clang_query(case: TestCase) -> frozenset[int]:
     executable = find_executable("CLANG_QUERY", "clang-query")
-    result = run_tool(
-        [executable, "-f", str(case.check_file), str(case.source), "--", f"-std={CXX_STANDARD}"]
-    )
+    result = run_tool([executable, "-f", str(case.check_file), str(case.source), "--", f"-std={CXX_STANDARD}"])
     if result.returncode != 0 or "error:" in result.stderr:
         raise HarnessError(f"clang-query failed ({result.returncode}):\n{result.stdout}{result.stderr}")
     return parse_clang_query_output(result.stdout, case.source)
@@ -270,11 +260,7 @@ def parse_arguments(arguments: Sequence[str]) -> argparse.Namespace:
 
 def select_cases(options: argparse.Namespace) -> list[TestCase]:
     cases = [case_for_source(source) for source in options.cases] or discover_cases(options.checks_dir)
-    return [
-        case
-        for case in cases
-        if options.tool in (None, case.tool) and options.check in (None, case.check_name)
-    ]
+    return [case for case in cases if options.tool in (None, case.tool) and options.check in (None, case.check_name)]
 
 
 def main(arguments: Sequence[str]) -> int:

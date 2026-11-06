@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Flags std::endl; stream '\\n' instead and flush explicitly when required."""
 
+from typing import Any
+
 import cppcheck
 
 
-def is_std_endl(token):
+def is_std_endl(token: Any) -> bool:
     scope = token.previous
     return (
         token.str == "endl"
@@ -16,7 +18,7 @@ def is_std_endl(token):
 
 
 @cppcheck.checker
-def stdEndl(cfg, data):
+def stdEndl(cfg: Any, data: Any) -> None:
     for token in filter(is_std_endl, cfg.tokenlist):
         cppcheck.reportError(
             token,
