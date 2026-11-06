@@ -1,0 +1,13 @@
+# Flags C-style and function-style casts that reinterpret an object's bits
+# (clang's BitCast / LValueBitCast cast kinds); spell these as reinterpret_cast
+# (plus const_cast when constness is also discarded) so the intent is explicit.
+# Template instantiations are traversed so that dependent casts are reported
+# once they resolve to a bit cast.
+set traversal AsIs
+match explicitCastExpr(
+  isExpansionInMainFile(),
+  anyOf(cStyleCastExpr(), cxxFunctionalCastExpr()),
+  anyOf(
+    hasCastKind("CK_BitCast"),
+    hasCastKind("CK_LValueBitCast"),
+    has(implicitCastExpr(anyOf(hasCastKind("CK_BitCast"), hasCastKind("CK_LValueBitCast"))))))
