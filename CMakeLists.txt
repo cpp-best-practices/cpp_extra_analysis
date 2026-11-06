@@ -1,12 +1,17 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.24)
 
-project(cpp_extra_analysis LANGUAGES NONE)
+project(cpp_extra_analysis LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(CPP_EXTRA_ANALYSIS_REQUIRE_TOOLS "Fail configuration if an analysis tool is missing" OFF)
 
 include(CTest)
+include(cmake/compiler_options.cmake)
 
-find_package(Python3 3.9 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
 
 set(CLANG_QUERY_NAMES clang-query)
 set(CPPCHECK_NAMES cppcheck)
@@ -27,6 +32,8 @@ foreach(tool CLANG_QUERY CPPCHECK)
   endif()
 endforeach()
 
+include(cmake/static_analyzers.cmake)
+
 set(HARNESS ${CMAKE_CURRENT_SOURCE_DIR}/tools/run_check_tests.py)
 set(HARNESS_ENVIRONMENT
     PYTHONDONTWRITEBYTECODE=1
@@ -40,6 +47,10 @@ set_tests_properties(harness.unit_tests PROPERTIES ENVIRONMENT PYTHONDONTWRITEBY
 file(GLOB_RECURSE CHECK_TEST_CASES CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/checks/*/*/tests/pass/*.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/checks/*/*/tests/fail/*.cpp)
+
+# Every test case must be valid, warning-free C++, or a check could pass on code the compiler rejects.
+add_library(check_test_cases OBJECT ${CHECK_TEST_CASES})
+target_link_libraries(check_test_cases PRIVATE cpp_extra_analysis_options)
 
 foreach(test_case IN LISTS CHECK_TEST_CASES)
   file(RELATIVE_PATH test_name ${CMAKE_CURRENT_SOURCE_DIR}/checks ${test_case})
