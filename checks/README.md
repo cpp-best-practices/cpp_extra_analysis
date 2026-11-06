@@ -31,6 +31,10 @@ many of each as needed.
 * A `fail` case marks every line that must be reported with
   `// expect-finding`; the check must report exactly those lines.
 
+Every case is also compiled as C++20 with the project's warnings, so it must be
+valid, warning-free code; clang-tidy runs over it too, with the checks that
+duplicate the custom checks turned off in `checks/.clang-tidy`.
+
 ## Running
 
 ```

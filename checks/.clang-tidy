@@ -1,0 +1,13 @@
+---
+# Test cases are free-standing snippets that deliberately contain what the
+# custom checks report (C-style casts, std::endl) and their accepted
+# alternatives, so the clang-tidy checks that would duplicate them are off.
+InheritParentConfig: true
+Checks: >-
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-type-cstyle-cast,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -google-readability-casting,
+  -misc-use-internal-linkage,
+  -performance-avoid-endl,
+  -readability-magic-numbers
