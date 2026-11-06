@@ -5,35 +5,168 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   check-tests:
-    runs-on: ubuntu-24.04
+    name: check-tests (${{ matrix.platform.os }}, ${{ matrix.platform.compiler }}, ${{ matrix.build_type }}, sanitizers ${{ matrix.sanitizers }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { os: ubuntu-24.04, compiler: gcc, cxx: g++, python-version: "3.10", analyzers: -DCPP_EXTRA_ANALYSIS_ENABLE_CPPCHECK=ON }
+          - { os: ubuntu-24.04, compiler: clang, cxx: clang++, python-version: "3.14", analyzers: -DCPP_EXTRA_ANALYSIS_ENABLE_CLANG_TIDY=ON }
+          - { os: macos-15, compiler: appleclang, cxx: c++, python-version: "3.12", analyzers: "" }
+        build_type: [Debug, Release]
+        sanitizers: ["ON", "OFF"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - name: Install analysis tools
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.platform.python-version }}
+
+      - name: Install analysis tools (Linux)
+        if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends clang-tools cppcheck
+          sudo apt-get install --yes --no-install-recommends clang-tools clang-tidy cppcheck
+
+      - name: Install analysis tools (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm cppcheck
+          echo "CMAKE_PROGRAM_PATH=$(brew --prefix llvm)/bin" >> "$GITHUB_ENV"
+          echo "SDKROOT=$(xcrun --show-sdk-path)" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: cmake -S . -B build -DCPP_EXTRA_ANALYSIS_REQUIRE_TOOLS=ON
+        env:
+          CXX: ${{ matrix.platform.cxx }}
+          BUILD_TYPE: ${{ matrix.build_type }}
+          SANITIZERS: ${{ matrix.sanitizers }}
+          ANALYZERS: ${{ matrix.platform.analyzers }}
+        run: >
+          cmake -S . -B build
+          -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
+          -DCMAKE_COMPILE_WARNING_AS_ERROR=ON
+          -DCPP_EXTRA_ANALYSIS_ENABLE_SANITIZERS="$SANITIZERS"
+          -DCPP_EXTRA_ANALYSIS_REQUIRE_TOOLS=ON
+          ${ANALYZERS:+"$ANALYZERS"}
+
+      - name: Build
+        run: cmake --build build --parallel
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends clang-tools cppcheck
+          python -m pip install coverage==7.17.2 gcovr==8.8
+
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCPP_EXTRA_ANALYSIS_ENABLE_COVERAGE=ON -DCPP_EXTRA_ANALYSIS_REQUIRE_TOOLS=ON
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Python branch coverage
+        run: |
+          python -W error -m coverage run --branch --source=tools,tests -m unittest discover -s tests
+          python -m coverage report --show-missing
+
+      - name: C++ branch coverage
+        run: gcovr --root . --filter checks/ --txt-metric branch build
+
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends clang-format
+          python -m pip install ruff==0.17.4 mypy==2.4.1 lizard==1.25.0 actionlint-py==1.7.12.25 zizmor==1.32.0 pip-audit==2.10.1
+
+      - name: Check C++ formatting
+        run: git ls-files -z '*.cpp' '*.hpp' | xargs -0 clang-format --dry-run -Werror
+
+      - name: Check Python formatting
+        run: ruff format --check .
+
+      - name: Lint Python
+        run: ruff check .
+
+      - name: Type check Python
+        run: mypy .
+
+      - name: Limit function length
+        run: lizard --length 30 --warnings_only tools tests checks
+
+      - name: Detect copy-paste
+        run: npx --yes jscpd@5.4.2 --exit-code 1 --ignore ".github/**" .
+
+      - name: Lint GitHub Actions
+        run: |
+          actionlint
+          zizmor .github
+
+      - name: Audit Python tools
+        run: pip-audit
+
+  secret-scanning:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: trufflesecurity/trufflehog@ea68ca03c865c5f324e86e849ced20ed3cf9dbbb # v3.99.8
+        with:
+          extra_args: --results=verified,unknown
+
   project-validator:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: cpp-best-practices/project_validator
           ref: main
           path: project_validator
+          persist-credentials: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for .github/workflows/ci.yml."""
+"""Unit tests for the GitHub Actions workflows."""
 
 from __future__ import annotations
 
@@ -7,8 +7,12 @@ import re
 import unittest
 from pathlib import Path
 
-WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci.yml"
+WORKFLOWS_DIR = Path(__file__).resolve().parent.parent / ".github" / "workflows"
+WORKFLOW = WORKFLOWS_DIR / "ci.yml"
 VALIDATOR_JOB = "project-validator"
+CHECK_TESTS_JOB = "check-tests"
+ACTION_REFERENCE = re.compile(r"^\s*(?:-\s*)?uses:\s*(?P<action>[^@\s]+)@(?P<ref>\S+)", re.MULTILINE)
+COMMIT_SHA = re.compile(r"[0-9a-f]{40}")
 JOB_HEADER = re.compile(r"^  (?P<name>[A-Za-z0-9_-]+):\s*$")
 
 
@@ -45,6 +49,28 @@ class ProjectValidatorJobTest(unittest.TestCase):
 
     def test_runs_the_validator_on_this_project(self) -> None:
         self.assertRegex(self.validator_job(), r"-m project_validator\b.*\$\{\{\s*github\.workspace\s*\}\}")
+
+
+class CheckTestsJobTest(unittest.TestCase):
+    def setUp(self) -> None:
+        jobs = workflow_jobs(WORKFLOW.read_text(encoding="utf-8"))
+        self.assertIn(CHECK_TESTS_JOB, jobs, f"{WORKFLOW} has no {CHECK_TESTS_JOB} job")
+        self.job = jobs[CHECK_TESTS_JOB]
+
+    def test_builds_debug_and_release_with_and_without_sanitizers(self) -> None:
+        self.assertRegex(self.job, re.compile(r"^\s+build_type:\s*\[Debug, Release\]\s*$", re.MULTILINE))
+        self.assertRegex(self.job, re.compile(r'^\s+sanitizers:\s*\["ON", "OFF"\]\s*$', re.MULTILINE))
+
+    def test_treats_warnings_as_errors(self) -> None:
+        self.assertIn("-DCMAKE_COMPILE_WARNING_AS_ERROR=ON", self.job)
+
+
+class ActionPinningTest(unittest.TestCase):
+    def test_every_action_is_pinned_to_a_commit(self) -> None:
+        for workflow in sorted(WORKFLOWS_DIR.glob("*.yml")):
+            for reference in ACTION_REFERENCE.finditer(workflow.read_text(encoding="utf-8")):
+                with self.subTest(workflow=workflow.name, action=reference["action"]):
+                    self.assertRegex(reference["ref"], COMMIT_SHA)
 
 
 class WorkflowJobsTest(unittest.TestCase):

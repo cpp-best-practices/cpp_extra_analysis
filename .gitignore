@@ -1,0 +1,10 @@
+/build/
+/build-*/
+/out/
+__pycache__/
+*.py[cod]
+/.venv/
+/.coverage
+/.mypy_cache/
+/.ruff_cache/
+/project_validator/
