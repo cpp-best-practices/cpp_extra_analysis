@@ -1,0 +1,34 @@
+# Flags implicit conversions; spell them out with a named cast or an explicit
+# construction instead. Ported from misc-no-implicit-conversions in
+# https://github.com/lefticus/llvm-project (add-implicit-conversion-checks).
+#
+# Value category adjustments, qualification changes, function decay, binding
+# derived objects to base references or pointers, string literal decay,
+# integer literal narrowing, nullptr and switch/case integral promotions are
+# allowed.
+set traversal AsIs
+
+# Implicit conversions between built-in types, 0 to pointer and calls to
+# conversion operators.
+match implicitCastExpr(isExpansionInMainFile(),
+                       unless(anyOf(hasCastKind("CK_LValueToRValue"),
+                                    hasCastKind("CK_FunctionToPointerDecay"),
+                                    hasCastKind("CK_NoOp"),
+                                    hasCastKind("CK_UncheckedDerivedToBase"),
+                                    hasCastKind("CK_DerivedToBase"),
+                                    allOf(hasCastKind("CK_ArrayToPointerDecay"), has(stringLiteral())),
+                                    allOf(hasCastKind("CK_IntegralCast"), has(integerLiteral())),
+                                    allOf(hasCastKind("CK_NullToPointer"), has(cxxNullPtrLiteralExpr())),
+                                    hasParent(cxxStaticCastExpr()),
+                                    allOf(hasCastKind("CK_IntegralCast"), hasParent(switchStmt())),
+                                    allOf(hasCastKind("CK_IntegralCast"),
+                                          hasParent(constantExpr(hasParent(caseStmt())))))))
+
+# Temporaries with destructors created through a converting constructor.
+match materializeTemporaryExpr(isExpansionInMainFile(),
+                               has(cxxBindTemporaryExpr(has(cxxConstructExpr(has(implicitCastExpr()))))))
+
+# Copies of a derived object into a base object.
+match cxxConstructExpr(isExpansionInMainFile(),
+                       hasDeclaration(cxxConstructorDecl(anyOf(isCopyConstructor(), isMoveConstructor()))),
+                       has(implicitCastExpr(hasCastKind("CK_DerivedToBase"))))
